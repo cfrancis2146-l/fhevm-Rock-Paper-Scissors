@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "name": "fhe-rps-game",
+  "builds": [
+    {
+      "src": "*.html",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.js",
+      "use": "@vercel/static"
+    },
+    {
+      "src": "*.css",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "/$1"
+    }
+  ],
+  "env": {
+    "BACKEND_API_URL": "http://154.12.85.16:3000"
+  }
+}
+

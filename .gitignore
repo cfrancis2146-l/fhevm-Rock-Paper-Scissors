@@ -1,0 +1,95 @@
+# ==================== 隐私和敏感信息 ====================
+# 环境变量（包含私钥、API Key 等）
+.env
+.env.*
+!.env.example
+*.env
+!env.example
+
+# 私钥文件
+*.key
+*.pem
+private-keys/
+secrets/
+
+# ==================== FHEVM 相关 ====================
+fhevmTemp/
+fhevm-keys/
+*.fhe
+
+# ==================== 依赖和模块 ====================
+node_modules/
+package-lock.json
+
+# ==================== Hardhat 编译产物 ====================
+cache/
+artifacts/
+typechain/
+typechain-types/
+types/
+
+# ==================== 部署和配置 ====================
+# 部署记录（可能包含合约地址、交易哈希等敏感信息）
+deployments/
+deployment.json
+deployment-*.json
+*.deployment.json
+
+# 测试网络配置
+networks/
+
+# ==================== 测试和覆盖率 ====================
+.coverage_artifacts
+.coverage_cache
+.coverage_contracts
+coverage/
+coverage.json
+test-results/
+
+# ==================== 日志文件 ====================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ==================== 构建产物 ====================
+dist/
+build/
+out/
+
+# ==================== IDE 和编辑器 ====================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ==================== 操作系统 ====================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ==================== 临时文件 ====================
+*.tmp
+*.temp
+.cache/
+tmp/
+
+# ==================== 其他 ====================
+# 备份文件
+*.bak
+*.backup
+
+# 数据库文件（如果有本地测试数据库）
+*.db
+*.sqlite
+*.sqlite3
+
+# 压缩文件（可能包含敏感数据）
+# *.zip
+# *.tar.gz
+# *.rar
+

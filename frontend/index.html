@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎮 石头剪刀布 - Zama FHE</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            min-height: 80vh;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 0.95em;
+        }
+
+        .header-decoration {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+        }
+
+        .header-decoration img {
+            width: 60px;
+            height: 60px;
+            object-fit: contain;
+            /* 反转颜色，将黑色背景变为白色/透明效果 */
+            filter: invert(1) brightness(0.8) opacity(0.6);
+            transition: all 0.3s ease;
+        }
+
+        .header-decoration img:hover {
+            filter: invert(1) brightness(1.2) drop-shadow(0 0 10px rgba(102, 126, 234, 0.8));
+            transform: scale(1.3) rotate(15deg);
+        }
+
+        /* 白色方框部分 - 整个页面右上角面板 */
+        .top-right-panel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            align-items: flex-end;
+            z-index: 1000;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 15px;
+            padding: 15px;
+            min-width: 200px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .top-right-panel .btn {
+            width: auto;
+            padding: 10px 20px;
+            margin: 0;
+            font-size: 0.95em;
+        }
+
+        .status-box {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            padding: 12px 15px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            min-width: 200px;
+            font-size: 0.85em;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            font-size: 0.9em;
+        }
+
+        .status-label {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .status-value {
+            font-weight: 600;
+            color: white;
+        }
+
+        .status-value.connected {
+            color: #10b981;
+        }
+
+        .status-value.disconnected {
+            color: #ef4444;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px;
+            font-size: 1.1em;
+            font-weight: 600;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: white;
+            color: #667eea;
+            font-weight: 700;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(255, 255, 255, 0.4);
+            background: #f0f4ff;
+        }
+
+        .btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #e5e7eb;
+        }
+
+        .game-section {
+            margin-top: 30px;
+            display: none;
+        }
+
+        .game-section.active {
+            display: block;
+        }
+
+        /* 对战区域布局 */
+        .battle-area {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+
+        .side-panel {
+            flex: 1;
+            background: #f9fafb;
+            border-radius: 15px;
+            padding: 20px;
+            border: 2px solid #e5e7eb;
+        }
+
+        .robot-panel {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-color: #0ea5e9;
+        }
+
+        .player-panel {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border-color: #f59e0b;
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .panel-icon {
+            font-size: 1.5em;
+        }
+
+        .panel-title {
+            color: #333;
+        }
+
+        .choices {
+            display: flex;
+            gap: 10px;
+            flex-direction: column;
+        }
+
+        /* 机器人选择展示（不可点击） */
+        .choice-display {
+            padding: 15px 10px;
+            background: white;
+            border: 2px solid #d1d5db;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            opacity: 0.7;
+        }
+
+        /* 玩家选择按钮（可点击） */
+        .choice-btn {
+            padding: 15px 10px;
+            background: white;
+            border: 3px solid #e5e7eb;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .choice-btn:hover {
+            border-color: #f59e0b;
+            transform: scale(1.05);
+            box-shadow: 0 5px 20px rgba(245, 158, 11, 0.3);
+        }
+
+        .choice-btn.selected {
+            border-color: #f59e0b;
+            background: #fffbeb;
+            transform: scale(1.05);
+        }
+
+        .choice-emoji {
+            font-size: 50px;
+            transition: all 0.3s ease;
+        }
+
+        .choice-btn:hover .choice-emoji {
+            transform: scale(1.2) rotate(10deg);
+        }
+
+        .choice-btn.selected .choice-emoji {
+            transform: scale(1.3);
+        }
+
+        .choice-label {
+            font-size: 0.85em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .result-box {
+            background: linear-gradient(135deg, #f0f9ff 0%, #fef3c7 100%);
+            border: 2px solid #0ea5e9;
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 20px;
+            display: none;
+            animation: slideDown 0.4s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .result-box.active {
+            display: block;
+        }
+
+        .result-item {
+            margin: 12px 0;
+            font-size: 1.1em;
+            display: flex;
+            align-items: center;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 8px;
+        }
+
+        .result-item strong {
+            color: #0369a1;
+            min-width: 100px;
+        }
+
+        .result-item img {
+            border-radius: 5px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+            /* 反转颜色以适配白色背景 */
+            filter: invert(1) brightness(0.9);
+        }
+
+        /* 加载状态提示 */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .loading-content {
+            background: white;
+            border-radius: 15px;
+            padding: 30px 50px;
+            text-align: center;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        .loading-text {
+            font-size: 1.1em;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .loading-subtext {
+            font-size: 0.9em;
+            color: #666;
+            margin-top: 8px;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 白色部分 - 连接钱包 参与游戏 */
+        .main-cta-section {
+            background: white;
+            border: 3px solid #e5e7eb;
+            border-radius: 20px;
+            padding: 40px;
+            margin: 30px 0;
+            text-align: center;
+            color: #333;
+            display: block;
+        }
+
+        .main-cta-section.hidden {
+            display: none;
+        }
+
+        .main-cta-title {
+            font-size: 3em;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+            letter-spacing: 2px;
+        }
+
+        .main-cta-subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+            margin-bottom: 30px;
+        }
+
+        /* 白色部分 - 技术要点 */
+        .tech-features-section {
+            background: white;
+            border: 3px solid #e5e7eb;
+            border-radius: 20px;
+            padding: 30px;
+            margin-top: auto;
+            color: #333;
+        }
+
+        .tech-features-title {
+            font-size: 1.8em;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 25px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+
+        .tech-features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
+
+        .tech-feature-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            border: 2px solid #e9ecef;
+            transition: all 0.3s ease;
+        }
+
+        .tech-feature-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .tech-feature-icon {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .tech-feature-title {
+            font-size: 1.1em;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .tech-feature-desc {
+            font-size: 0.9em;
+            opacity: 0.9;
+            line-height: 1.4;
+        }
+
+        /* 弹窗样式 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+            animation: modalSlideIn 0.3s ease-out;
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            border-bottom: 2px solid #f0f0f0;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #333;
+            font-size: 1.5em;
+        }
+
+        .modal-close {
+            font-size: 2em;
+            color: #999;
+            cursor: pointer;
+            transition: color 0.3s;
+            line-height: 1;
+        }
+
+        .modal-close:hover {
+            color: #333;
+        }
+
+        .modal-body {
+            padding: 30px;
+        }
+
+        .modal-game-id {
+            text-align: center;
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 0.95em;
+        }
+
+        .modal-choices {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            margin: 30px 0;
+        }
+
+        .modal-choice {
+            text-align: center;
+        }
+
+        .modal-choice-emoji {
+            font-size: 4em;
+            margin-bottom: 10px;
+        }
+
+        .modal-choice-name {
+            font-size: 0.95em;
+            color: #666;
+        }
+
+        .modal-vs {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #999;
+        }
+
+        .modal-outcome {
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px;
+            border-radius: 15px;
+            background: #f9fafb;
+        }
+
+        .modal-outcome.win {
+            background: linear-gradient(135deg, #d4fc79 0%, #96e6a1 100%);
+        }
+
+        .modal-outcome.lose {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+        }
+
+        .modal-outcome.draw {
+            background: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
+        }
+
+        .modal-outcome-icon {
+            font-size: 4em;
+            margin-bottom: 10px;
+        }
+
+        .modal-outcome-message {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .modal-reward {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .modal-reward-label {
+            font-size: 0.95em;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .modal-reward-amount {
+            font-size: 1.8em;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .modal-actions .btn {
+            flex: 1;
+        }
+    </style>
+</head>
+<body>
+    <!-- 右上角状态栏和连接按钮 -->
+    <div class="top-right-panel">
+        <button class="btn btn-primary" id="connectBtn" onclick="connectWallet()">
+            连接 MetaMask
+        </button>
+        <div class="status-box">
+            <div class="status-item">
+                <span class="status-label">钱包:</span>
+                <span class="status-value disconnected" id="walletStatus">未连接</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">SDK:</span>
+                <span class="status-value" id="sdkStatus">未初始化</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1>🎲 石头剪刀布</h1>
+            <p>Chainlink VRF (真随机) + Zama FHE (隐私保护)</p>
+            <div class="header-decoration">
+                <img src="png/rock.png" alt="石头">
+                <img src="png/Scissors.png" alt="剪刀">
+                <img src="png/cloth.png" alt="布">
+            </div>
+        </div>
+
+
+        <!-- 褐色部分 - 连接钱包 参与游戏 -->
+        <div class="main-cta-section">
+            <div class="main-cta-title">连接钱包 参与游戏</div>
+            <div class="main-cta-subtitle">体验全态加密的隐私保护游戏</div>
+        </div>
+
+        <!-- 游戏区域 -->
+        <div class="game-section" id="gameSection">
+            <h3 style="margin-bottom: 20px; text-align: center;">选择你的出拳：</h3>
+            
+            <!-- 左右分栏布局 -->
+            <div class="battle-area">
+                <!-- 左半边：机器人 -->
+                <div class="side-panel robot-panel">
+                    <div class="panel-header">
+                        <span class="panel-icon">🤖</span>
+                        <span class="panel-title">机器人</span>
+                    </div>
+                    <div class="choices">
+                        <div class="choice-display">
+                            <span class="choice-emoji">👊</span>
+                            <span class="choice-label">石头</span>
+                        </div>
+                        <div class="choice-display">
+                            <span class="choice-emoji">✂️</span>
+                            <span class="choice-label">剪刀</span>
+                        </div>
+                        <div class="choice-display">
+                            <span class="choice-emoji">🖐️</span>
+                            <span class="choice-label">布</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右半边：玩家 -->
+                <div class="side-panel player-panel">
+                    <div class="panel-header">
+                        <span class="panel-icon">👤</span>
+                        <span class="panel-title">玩家</span>
+                    </div>
+                    <div class="choices">
+                        <button class="choice-btn" data-choice="0" onclick="selectChoice(0)">
+                            <span class="choice-emoji">👊</span>
+                            <span class="choice-label">石头</span>
+                        </button>
+                        <button class="choice-btn" data-choice="1" onclick="selectChoice(1)">
+                            <span class="choice-emoji">✂️</span>
+                            <span class="choice-label">剪刀</span>
+                        </button>
+                        <button class="choice-btn" data-choice="2" onclick="selectChoice(2)">
+                            <span class="choice-emoji">🖐️</span>
+                            <span class="choice-label">布</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-item" style="margin-top: 20px;">
+                <span class="status-label">入场费:</span>
+                <span class="status-value" id="entryFee">--</span>
+            </div>
+
+            <button class="btn btn-primary" id="playBtn" onclick="playGame()" disabled>
+                开始游戏
+            </button>
+
+            <!-- 结果显示 -->
+            <div class="result-box" id="resultBox">
+                <div class="result-item">
+                    <strong>游戏 ID:</strong> <span id="gameId">--</span>
+                </div>
+                <div class="result-item">
+                    <strong>你的选择:</strong> <span id="playerChoice">--</span>
+                </div>
+                <div class="result-item">
+                    <strong>系统选择:</strong> <span id="systemChoice">--</span>
+                </div>
+                <div class="result-item">
+                    <strong>游戏结果:</strong> <span id="gameResult">--</span>
+                </div>
+                <div class="result-item">
+                    <strong>奖励:</strong> <span id="reward">--</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 红色部分 - 技术要点 -->
+        <div class="tech-features-section">
+            <div class="tech-features-title">🔐 核心技术特性</div>
+            <div class="tech-features-grid">
+                <div class="tech-feature-item">
+                    <span class="tech-feature-icon">🔒</span>
+                    <div class="tech-feature-title">全态加密 (FHE)</div>
+                    <div class="tech-feature-desc">Zama FHE 技术保护游戏选择隐私，连智能合约都无法看到你的出拳</div>
+                </div>
+                <div class="tech-feature-item">
+                    <span class="tech-feature-icon">🎲</span>
+                    <div class="tech-feature-title">真随机数</div>
+                    <div class="tech-feature-desc">Chainlink VRF 提供可验证的随机性，确保游戏公平性</div>
+                </div>
+                <div class="tech-feature-item">
+                    <span class="tech-feature-icon">⚡</span>
+                    <div class="tech-feature-title">零知识证明</div>
+                    <div class="tech-feature-desc">通过密码学证明验证游戏结果，无需透露具体选择</div>
+                </div>
+                <div class="tech-feature-item">
+                    <span class="tech-feature-icon">🌐</span>
+                    <div class="tech-feature-title">去中心化</div>
+                    <div class="tech-feature-desc">基于以太坊智能合约，无需信任第三方，完全透明</div>
+                </div>
+                <div class="tech-feature-item">
+                    <span class="tech-feature-icon">🛡️</span>
+                    <div class="tech-feature-title">隐私保护</div>
+                    <div class="tech-feature-desc">你的游戏选择全程加密，只有你知道自己的出拳</div>
+                </div>
+                <div class="tech-feature-item">
+                    <span class="tech-feature-icon">💰</span>
+                    <div class="tech-feature-title">智能奖励</div>
+                    <div class="tech-feature-desc">自动化的奖励分配系统，获胜即可立即领取奖励</div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 加载状态覆盖层 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <div class="loading-text" id="loadingText">处理中...</div>
+            <div class="loading-subtext" id="loadingSubtext">请稍候</div>
+        </div>
+    </div>
+
+    <!-- 游戏结果弹窗 -->
+    <div id="resultModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>🎮 游戏结果</h2>
+                <span class="modal-close" onclick="closeResultModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="modal-game-id">游戏 ID: <span id="modalGameId">--</span></div>
+                
+                <div class="modal-choices">
+                    <div class="modal-choice">
+                        <div class="modal-choice-emoji" id="modalPlayerEmoji">👊</div>
+                        <div class="modal-choice-name" id="modalPlayerChoice">你的选择</div>
+                    </div>
+                    <div class="modal-vs">VS</div>
+                    <div class="modal-choice">
+                        <div class="modal-choice-emoji" id="modalSystemEmoji">👊</div>
+                        <div class="modal-choice-name" id="modalSystemChoice">系统选择</div>
+                    </div>
+                </div>
+
+                <div id="modalOutcomeSection" class="modal-outcome">
+                    <div class="modal-outcome-icon" id="modalOutcomeIcon">🎉</div>
+                    <div class="modal-outcome-message" id="modalOutcomeMessage">恭喜你赢了！</div>
+                </div>
+
+                <div id="modalRewardDisplay" class="modal-reward">
+                    <div class="modal-reward-label">💎 奖励金额</div>
+                    <div class="modal-reward-amount" id="modalRewardAmount">0.001 ETH</div>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="modalClaimBtn" class="btn btn-primary">领取奖励 Claim</button>
+                    <button class="btn btn-secondary" onclick="closeResultModal()">关闭 Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 使用传统的 script 标签，不用 ES Module -->
+    <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+    <script src="app-simple.js?v=20251017"></script>
+</body>
+</html>
