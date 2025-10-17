@@ -33,11 +33,11 @@ const SEPOLIA_CONFIG = {
 };
 
 // 后端 API 地址配置
-// 生产环境：使用服务器 IP (HTTPS，通过 Nginx 代理到 3000 端口)
+// 生产环境：使用免费域名 + Let's Encrypt SSL 证书
 // 本地开发：使用 localhost:3000
 const BACKEND_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3000'
-    : 'https://154.12.85.16';
+    : 'https://aabbccddeeff.duckdns.org';
 
 // 全局状态
 let provider = null;
