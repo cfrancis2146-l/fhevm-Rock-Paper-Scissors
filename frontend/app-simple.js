@@ -18,12 +18,26 @@ const RESULTS = {
 
 const CONTRACT_ADDRESS = "0xc8B7d98E9585fbe71871Fb14Fa4463395026BF3F";
 
+// 网络配置 - Sepolia 测试网
+const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 的十六进制
+const SEPOLIA_CONFIG = {
+    chainId: SEPOLIA_CHAIN_ID,
+    chainName: 'Sepolia Test Network',
+    nativeCurrency: {
+        name: 'Sepolia ETH',
+        symbol: 'ETH',
+        decimals: 18
+    },
+    rpcUrls: ['https://sepolia.infura.io/v3/'],
+    blockExplorerUrls: ['https://sepolia.etherscan.io/']
+};
+
 // 后端 API 地址配置
-// 生产环境：使用服务器 IP 和端口
+// 生产环境：使用服务器 IP (HTTPS，通过 Nginx 代理到 3000 端口)
 // 本地开发：使用 localhost:3000
 const BACKEND_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
     ? 'http://localhost:3000'
-    : 'http://154.12.85.16:3000';
+    : 'https://154.12.85.16';
 
 // 全局状态
 let provider = null;
@@ -65,6 +79,33 @@ function updateStatus(type, value, isConnected = false) {
     element.className = `status-value ${isConnected ? 'connected' : 'disconnected'}`;
 }
 
+// 切换到 Sepolia 网络
+async function switchToSepolia() {
+    try {
+        await window.ethereum.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: SEPOLIA_CHAIN_ID }],
+        });
+        return true;
+    } catch (switchError) {
+        // 如果网络不存在，则添加网络
+        if (switchError.code === 4902) {
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [SEPOLIA_CONFIG],
+                });
+                return true;
+            } catch (addError) {
+                console.error('添加 Sepolia 网络失败:', addError);
+                return false;
+            }
+        }
+        console.error('切换网络失败:', switchError);
+        return false;
+    }
+}
+
 // 连接钱包
 async function connectWallet() {
     const connectBtn = document.getElementById('connectBtn');
@@ -92,6 +133,27 @@ async function connectWallet() {
         // 创建 provider 和 signer (使用 UMD 版本的 ethers)
         provider = new ethers.BrowserProvider(window.ethereum);
         signer = await provider.getSigner();
+        
+        // 检查网络
+        const network = await provider.getNetwork();
+        const currentChainId = '0x' + network.chainId.toString(16);
+        
+        if (currentChainId !== SEPOLIA_CHAIN_ID) {
+            addLog(`⚠️ 当前网络不是 Sepolia，正在切换...`, 'info');
+            showLoading('切换网络...', '请在 MetaMask 中确认切换到 Sepolia 网络');
+            
+            const switched = await switchToSepolia();
+            if (!switched) {
+                hideLoading();
+                alert('请手动切换到 Sepolia 测试网络！');
+                return;
+            }
+            
+            // 重新获取 provider 和 signer
+            provider = new ethers.BrowserProvider(window.ethereum);
+            signer = await provider.getSigner();
+            addLog('✅ 已切换到 Sepolia 网络', 'success');
+        }
         
         // 连接合约
         contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
