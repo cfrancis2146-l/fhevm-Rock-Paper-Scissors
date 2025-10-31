@@ -1,5 +1,5 @@
 /**
- * 简化版前端 - 通过后端 API 处理 FHE 加密/解密
+ * 前端版本 - 使用 SDK 直接处理 FHE 加密/解密
  */
 
 // 游戏配置
@@ -32,12 +32,7 @@ const SEPOLIA_CONFIG = {
     blockExplorerUrls: ['https://sepolia.etherscan.io/']
 };
 
-// 后端 API 地址配置
-// 生产环境：使用免费域名 + Let's Encrypt SSL 证书
-// 本地开发：使用 localhost:3000
-const BACKEND_API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:3000'
-    : 'https://aabbccddeeff.duckdns.org';
+// 注意：加密操作已移至前端 SDK，不再需要后端 API
 
 // 全局状态
 let provider = null;
@@ -45,6 +40,8 @@ let signer = null;
 let contract = null;
 let userAddress = null;
 let selectedChoice = null;
+let fheInstance = null; // FHE SDK 实例
+let sdkReady = false; // SDK 是否已初始化
 
 // 合约 ABI (只需要用到的函数)
 const CONTRACT_ABI = [
@@ -77,6 +74,94 @@ function updateStatus(type, value, isConnected = false) {
     const element = document.getElementById(`${type}Status`);
     element.textContent = value;
     element.className = `status-value ${isConnected ? 'connected' : 'disconnected'}`;
+}
+
+// 初始化 Zama FHE SDK
+async function initFHESDK() {
+    if (sdkReady && fheInstance) {
+        console.log('✅ SDK 已初始化');
+        return fheInstance;
+    }
+
+    try {
+        addLog('🔧 正在初始化 Zama FHE SDK...', 'info');
+        showLoading('初始化加密服务...', '正在加载 Zama FHE SDK');
+        
+        // 等待 SDK 加载完成
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // 查找 SDK 全局对象
+        const win = window;
+        let SDK = null;
+        
+        // 可能的全局变量名
+        const possibleNames = [
+            'RelayerSDK',
+            'ZamaSDK',
+            'FhevmSDK',
+            'relayerSDK',
+            'fhevm',
+            'ZamaRelayerSDK',
+        ];
+        
+        // 方法A: 按名称查找
+        for (const name of possibleNames) {
+            if (win[name] && typeof win[name] === 'object') {
+                const obj = win[name];
+                if (typeof obj.initSDK === 'function' && 
+                    typeof obj.createInstance === 'function' &&
+                    obj.SepoliaConfig) {
+                    console.log(`✅ 找到 SDK at window.${name}`);
+                    SDK = obj;
+                    break;
+                }
+            }
+        }
+        
+        // 方法B: 智能搜索
+        if (!SDK) {
+            console.warn('⚠️ 预定义名称未找到，启动智能搜索...');
+            for (const key of Object.keys(win)) {
+                const obj = win[key];
+                if (obj && 
+                    typeof obj === 'object' && 
+                    typeof obj.initSDK === 'function' &&
+                    typeof obj.createInstance === 'function' &&
+                    obj.SepoliaConfig) {
+                    console.log(`✅ 智能找到 SDK at window.${key}`);
+                    SDK = obj;
+                    break;
+                }
+            }
+        }
+        
+        if (!SDK) {
+            throw new Error('未找到 Zama FHE SDK，请检查脚本是否已加载');
+        }
+        
+        // 初始化 SDK
+        addLog('📦 调用 initSDK()...', 'info');
+        const { initSDK, createInstance, SepoliaConfig } = SDK;
+        await initSDK();
+        addLog('✅ initSDK() 完成', 'success');
+        
+        // 创建 FHE 实例
+        addLog('🔐 创建 FHE 实例...', 'info');
+        fheInstance = await createInstance(SepoliaConfig);
+        addLog('✅ FHE 实例创建完成', 'success');
+        
+        sdkReady = true;
+        updateStatus('sdk', '就绪 ✅', true);
+        hideLoading();
+        
+        return fheInstance;
+        
+    } catch (error) {
+        console.error('❌ SDK 初始化失败:', error);
+        addLog(`❌ SDK 初始化失败: ${error.message}`, 'error');
+        hideLoading();
+        throw error;
+    }
 }
 
 // 切换到 Sepolia 网络
@@ -128,11 +213,14 @@ async function connectWallet() {
         const accounts = await window.ethereum.request({ 
             method: 'eth_requestAccounts' 
         });
-        userAddress = accounts[0];
         
         // 创建 provider 和 signer (使用 UMD 版本的 ethers)
         provider = new ethers.BrowserProvider(window.ethereum);
         signer = await provider.getSigner();
+        
+        // 获取地址并转换为校验和格式（EIP-55）
+        const rawAddress = accounts[0];
+        userAddress = ethers.getAddress(rawAddress); // 转换为校验和格式
         
         // 检查网络
         const network = await provider.getNetwork();
@@ -158,6 +246,9 @@ async function connectWallet() {
         // 连接合约
         contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
         
+        // 初始化 FHE SDK
+        await initFHESDK();
+        
         // 获取余额
         const balance = await provider.getBalance(userAddress);
         const balanceInEth = ethers.formatEther(balance);
@@ -168,7 +259,6 @@ async function connectWallet() {
         
         // 更新 UI
         updateStatus('wallet', `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}`, true);
-        updateStatus('sdk', '就绪 ✅', true);
         
         addLog(`✅ 钱包连接成功: ${userAddress}`, 'success');
         addLog(`💰 账户余额: ${balanceInEth} ETH`, 'info');
@@ -226,26 +316,35 @@ async function playGame() {
     playBtn.disabled = true;
 
     try {
-        // 步骤 1: 加密
-        showLoading('加密中...', '正在使用 FHE 加密您的选择');
-        addLog('📋 步骤 1: 向后端请求加密数据...', 'info');
+        // 步骤 1: 使用前端 SDK 加密
+        showLoading('加密中...', '正在使用 FHE SDK 加密您的选择');
+        addLog('📋 步骤 1: 使用前端 SDK 加密数据...', 'info');
         
-        // 调用后端 API 加密数据
-        const encryptResponse = await fetch(`${BACKEND_API_URL}/api/encrypt`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                choice: selectedChoice,
-                contractAddress: CONTRACT_ADDRESS,
-                userAddress: userAddress
-            })
-        });
-
-        if (!encryptResponse.ok) {
-            throw new Error('加密请求失败');
+        // 确保 SDK 已初始化
+        if (!fheInstance || !sdkReady) {
+            await initFHESDK();
         }
-
-        const { handle, inputProof } = await encryptResponse.json();
+        
+        // 创建加密输入
+        addLog('🔐 创建加密输入...', 'info');
+        // 确保地址使用校验和格式
+        const checksummedAddress = ethers.getAddress(userAddress);
+        const checksummedContractAddressForEncrypt = ethers.getAddress(CONTRACT_ADDRESS);
+        const buffer = fheInstance.createEncryptedInput(checksummedContractAddressForEncrypt, checksummedAddress);
+        buffer.add8(selectedChoice);
+        
+        // 执行加密
+        addLog('⏳ 正在加密...', 'info');
+        const encrypted = await buffer.encrypt();
+        
+        // 获取加密结果（将 Uint8Array 转换为十六进制字符串）
+        const handle = '0x' + Array.from(encrypted.handles[0])
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+        const inputProof = '0x' + Array.from(encrypted.inputProof)
+            .map(b => b.toString(16).padStart(2, '0'))
+            .join('');
+        
         addLog('✅ 数据加密成功', 'success');
 
         // 步骤 2: 提交交易
@@ -272,25 +371,89 @@ async function playGame() {
         addLog('📋 步骤 3: 等待 Chainlink VRF 生成随机数...', 'info');
         await new Promise(resolve => setTimeout(resolve, 5000)); // 等待 5 秒
 
-        // 步骤 4: 解密
-        showLoading('解密中...', '正在解密游戏结果');
-        addLog('📋 步骤 4: 向后端请求解密结果...', 'info');
-        const decryptResponse = await fetch(`${BACKEND_API_URL}/api/decrypt`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                gameId: gameId.toString(),
-                contractAddress: CONTRACT_ADDRESS,
-                userAddress: userAddress
-            })
-        });
-
-        if (!decryptResponse.ok) {
-            throw new Error('解密请求失败');
+        // 步骤 4: 解密（使用前端 SDK）
+        showLoading('解密中...', '正在使用 FHE SDK 解密游戏结果');
+        addLog('📋 步骤 4: 使用前端 SDK 解密...', 'info');
+        
+        // 确保 SDK 已初始化
+        if (!fheInstance || !sdkReady) {
+            await initFHESDK();
         }
-
-        const decryptResult = await decryptResponse.json();
+        
+        // 读取游戏信息
+        const game = await contract.games(gameId);
+        addLog('✅ 游戏信息获取成功', 'success');
+        
+        // 生成密钥对
+        addLog('🔑 生成解密密钥对...', 'info');
+        const keypair = fheInstance.generateKeypair();
+        
+        // 确保地址使用校验和格式
+        const checksummedContractAddress = ethers.getAddress(CONTRACT_ADDRESS);
+        const checksummedUserAddress = ethers.getAddress(userAddress);
+        
+        // 准备句柄
+        const handleContractPairs = [
+            {
+                handle: game.encryptedPlayerChoice.toString(),
+                contractAddress: checksummedContractAddress,
+            },
+            {
+                handle: game.encryptedSystemChoice.toString(),
+                contractAddress: checksummedContractAddress,
+            },
+            {
+                handle: game.encryptedResult.toString(),
+                contractAddress: checksummedContractAddress,
+            },
+        ];
+        
+        // 创建 EIP-712 签名
+        const startTimeStamp = Math.floor(Date.now() / 1000).toString();
+        const durationDays = '10';
+        const contractAddresses = [checksummedContractAddress];
+        
+        addLog('✍️ 创建 EIP-712 签名...', 'info');
+        const eip712 = fheInstance.createEIP712(
+            keypair.publicKey,
+            contractAddresses,
+            startTimeStamp,
+            durationDays,
+        );
+        
+        // 请求用户签名
+        addLog('⏳ 请求 MetaMask 签名...', 'info');
+        const signature = await signer.signTypedData(
+            eip712.domain,
+            { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
+            eip712.message,
+        );
+        addLog('✅ 签名成功', 'success');
+        
+        // 执行解密
+        addLog('🔓 正在通过 Zama Gateway 解密...', 'info');
+        const decryptResultMap = await fheInstance.userDecrypt(
+            handleContractPairs,
+            keypair.privateKey,
+            keypair.publicKey,
+            signature.replace('0x', ''),
+            contractAddresses,
+            checksummedUserAddress,
+            startTimeStamp,
+            durationDays,
+        );
+        
+        // 解析结果
+        const decryptResult = {
+            playerChoice: Number(decryptResultMap[game.encryptedPlayerChoice.toString()]),
+            systemChoice: Number(decryptResultMap[game.encryptedSystemChoice.toString()]),
+            result: Number(decryptResultMap[game.encryptedResult.toString()])
+        };
+        
         addLog('✅ 解密成功', 'success');
+        addLog(`   玩家选择: ${CHOICES[decryptResult.playerChoice].name}`, 'info');
+        addLog(`   系统选择: ${CHOICES[decryptResult.systemChoice].name}`, 'info');
+        addLog(`   游戏结果: ${RESULTS[decryptResult.result]}`, 'info');
 
         // 步骤 5: 结算
         showLoading('结算中...', '正在上链结算游戏结果');
@@ -304,10 +467,10 @@ async function playGame() {
         await settleTx.wait();
         addLog('✅ 游戏结算成功', 'success');
 
-        // 显示结果
-        const game = await contract.games(gameId);
+        // 显示结果（重新读取游戏信息以获取最新状态）
+        const finalGame = await contract.games(gameId);
         hideLoading();
-        displayResult(gameId, decryptResult, game);
+        displayResult(gameId, decryptResult, finalGame);
 
     } catch (error) {
         hideLoading();
@@ -395,8 +558,11 @@ function closeResultModal() {
 }
 
 // 将函数暴露到全局作用域，供 HTML onclick 调用
-window.connectWallet = connectWallet;
-window.selectChoice = selectChoice;
-window.playGame = playGame;
-window.closeResultModal = closeResultModal;
+// 确保函数在定义后立即暴露
+if (typeof window !== 'undefined') {
+    window.connectWallet = connectWallet;
+    window.selectChoice = selectChoice;
+    window.playGame = playGame;
+    window.closeResultModal = closeResultModal;
+}
 

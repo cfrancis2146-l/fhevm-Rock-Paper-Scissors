@@ -1,14 +1,16 @@
 /**
- * 后端服务 - 处理 FHE 加密和解密
+ * 后端服务 - 处理 FHE 加密
  * 运行: node backend-server.js
+ * 注意: 解密功能已移至前端 SDK，此服务仅提供加密功能
  */
 
 const express = require('express');
 const cors = require('cors');
 const { ethers } = require('hardhat');
 const { fhevm } = require('hardhat');
-const { createInstance, SepoliaConfig } = require('@zama-fhe/relayer-sdk/node');
-const hre = require('hardhat');
+// 注意: 解密功能已移至前端，不再需要 Relayer SDK
+// const { createInstance, SepoliaConfig } = require('@zama-fhe/relayer-sdk/node');
+// const hre = require('hardhat');
 
 // 设置网络为 sepolia
 process.env.HARDHAT_NETWORK = 'sepolia';
@@ -42,10 +44,10 @@ app.get('/api/health', (req, res) => {
     });
 });
 
-// 合约 ABI
-const CONTRACT_ABI = [
-    "function games(uint256) view returns (address player, uint256 betAmount, bytes32 encryptedPlayerChoice, bytes32 encryptedSystemChoice, bytes32 encryptedResult, bool settled, bool rewarded, uint256 reward)",
-];
+// 合约 ABI（仅用于加密，不需要读取游戏信息）
+// const CONTRACT_ABI = [
+//     "function games(uint256) view returns (address player, uint256 betAmount, bytes32 encryptedPlayerChoice, bytes32 encryptedSystemChoice, bytes32 encryptedResult, bool settled, bool rewarded, uint256 reward)",
+// ];
 
 // 初始化 FHEVM (启动时执行一次)
 let fhevmInitialized = false;
@@ -97,109 +99,9 @@ app.post('/api/encrypt', async (req, res) => {
     }
 });
 
-// API: 解密游戏结果
-app.post('/api/decrypt', async (req, res) => {
-    try {
-        const { gameId, contractAddress, userAddress } = req.body;
-
-        console.log(`\n📥 收到解密请求:`);
-        console.log(`   游戏 ID: ${gameId}`);
-        console.log(`   玩家: ${userAddress}`);
-        console.log(`   合约: ${contractAddress}`);
-
-        // 获取签名者
-        const [signer] = await ethers.getSigners();
-        console.log(`   使用签名者: ${signer.address}`);
-
-        // 连接合约
-        const contract = new ethers.Contract(contractAddress, CONTRACT_ABI, signer);
-
-        // 读取游戏信息
-        console.log('⏳ 读取游戏信息...');
-        const game = await contract.games(gameId);
-        console.log('✅ 游戏信息获取成功');
-
-        // 初始化 Relayer SDK
-        console.log('⏳ 初始化 Relayer SDK...');
-        const instance = await createInstance({
-            ...SepoliaConfig,
-            network: hre.network.provider
-        });
-        console.log('✅ Relayer SDK 初始化成功');
-
-        // 生成密钥对
-        const keypair = instance.generateKeypair();
-
-        // 准备句柄
-        const handleContractPairs = [
-            {
-                handle: game.encryptedPlayerChoice.toString(),
-                contractAddress: contractAddress,
-            },
-            {
-                handle: game.encryptedSystemChoice.toString(),
-                contractAddress: contractAddress,
-            },
-            {
-                handle: game.encryptedResult.toString(),
-                contractAddress: contractAddress,
-            },
-        ];
-
-        // 创建 EIP-712 签名
-        const startTimeStamp = Math.floor(Date.now() / 1000).toString();
-        const durationDays = '10';
-        const contractAddresses = [contractAddress];
-
-        const eip712 = instance.createEIP712(
-            keypair.publicKey,
-            contractAddresses,
-            startTimeStamp,
-            durationDays,
-        );
-
-        console.log('⏳ 请求签名...');
-        const signature = await signer.signTypedData(
-            eip712.domain,
-            { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
-            eip712.message,
-        );
-        console.log('✅ 签名成功');
-
-        // 执行解密
-        console.log('⏳ 正在通过 Zama Gateway 解密...');
-        const decryptResult = await instance.userDecrypt(
-            handleContractPairs,
-            keypair.privateKey,
-            keypair.publicKey,
-            signature.replace('0x', ''),
-            contractAddresses,
-            signer.address,
-            startTimeStamp,
-            durationDays,
-        );
-        console.log('✅ 解密成功');
-
-        // 解析结果
-        const playerChoice = Number(decryptResult[game.encryptedPlayerChoice.toString()]);
-        const systemChoice = Number(decryptResult[game.encryptedSystemChoice.toString()]);
-        const result = Number(decryptResult[game.encryptedResult.toString()]);
-
-        console.log(`   玩家选择: ${playerChoice}`);
-        console.log(`   系统选择: ${systemChoice}`);
-        console.log(`   游戏结果: ${result}`);
-
-        res.json({
-            playerChoice,
-            systemChoice,
-            result
-        });
-
-    } catch (error) {
-        console.error('❌ 解密失败:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
+// API: 解密游戏结果 - 已删除
+// 解密功能已移至前端 SDK，用户可以直接在前端使用 Zama SDK 进行解密
+// 这样可以更好地保护用户隐私，无需通过后端服务
 
 // 健康检查
 app.get('/health', (req, res) => {
