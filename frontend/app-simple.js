@@ -18,6 +18,18 @@ const RESULTS = {
 
 const CONTRACT_ADDRESS = "0xc8B7d98E9585fbe71871Fb14Fa4463395026BF3F";
 
+// ==================== Infura 配置 ====================
+// 请在此处填入您的 Infura API Key（必需，用于避免 CORS 错误）
+// 获取地址: https://infura.io/
+// 注册后创建新项目，选择 Ethereum -> Sepolia 网络，即可获取 API Key
+const INFURA_API_KEY = '6ad9f54d400a49c296691195a0eae7aa'; // ⚠️ 请替换为您的 Infura API Key
+
+// 构建完整的 Infura RPC URL
+// 如果未配置 API Key，将使用备用公共 RPC（可能有限制或 CORS 问题）
+const SEPOLIA_RPC_URL = INFURA_API_KEY && INFURA_API_KEY !== 'YOUR_INFURA_API_KEY_HERE' 
+    ? `https://sepolia.infura.io/v3/${INFURA_API_KEY}`
+    : 'https://rpc.sepolia.org'; // 备用公共 RPC（如果 Infura 未配置）
+
 // 网络配置 - Sepolia 测试网
 const SEPOLIA_CHAIN_ID = '0xaa36a7'; // 11155111 的十六进制
 const SEPOLIA_CONFIG = {
@@ -28,7 +40,7 @@ const SEPOLIA_CONFIG = {
         symbol: 'ETH',
         decimals: 18
     },
-    rpcUrls: ['https://sepolia.infura.io/v3/'],
+    rpcUrls: [SEPOLIA_RPC_URL],
     blockExplorerUrls: ['https://sepolia.etherscan.io/']
 };
 
@@ -145,9 +157,30 @@ async function initFHESDK() {
         await initSDK();
         addLog('✅ initSDK() 完成', 'success');
         
-        // 创建 FHE 实例
+        // 创建自定义配置，覆盖 RPC URL 为 Infura
+        addLog('🔧 配置自定义 RPC 端点...', 'info');
+        addLog(`📡 使用 RPC: ${SEPOLIA_RPC_URL}`, 'info');
+        
+        // 检查 SepoliaConfig 的结构
+        console.log('📋 SepoliaConfig.network 原始值:', SepoliaConfig?.network);
+        console.log('📋 SepoliaConfig.network 类型:', typeof SepoliaConfig?.network);
+        
+        // 创建自定义配置，直接覆盖 network 字段为 Infura URL
+        // network 字段是一个字符串（RPC URL），不是对象
+        const customConfig = {
+            ...SepoliaConfig,
+            network: SEPOLIA_RPC_URL  // 直接替换为 Infura URL
+        };
+        
+        console.log('📋 自定义配置:', {
+            originalNetwork: SepoliaConfig?.network,
+            newNetwork: customConfig.network,
+            usingRPC: SEPOLIA_RPC_URL
+        });
+        
+        // 创建 FHE 实例（使用自定义配置）
         addLog('🔐 创建 FHE 实例...', 'info');
-        fheInstance = await createInstance(SepoliaConfig);
+        fheInstance = await createInstance(customConfig);
         addLog('✅ FHE 实例创建完成', 'success');
         
         sdkReady = true;
@@ -165,9 +198,9 @@ async function initFHESDK() {
 }
 
 // 切换到 Sepolia 网络
-async function switchToSepolia() {
+async function switchToSepolia(ethereum = window.ethereum) {
     try {
-        await window.ethereum.request({
+        await ethereum.request({
             method: 'wallet_switchEthereumChain',
             params: [{ chainId: SEPOLIA_CHAIN_ID }],
         });
@@ -176,7 +209,7 @@ async function switchToSepolia() {
         // 如果网络不存在，则添加网络
         if (switchError.code === 4902) {
             try {
-                await window.ethereum.request({
+                await ethereum.request({
                     method: 'wallet_addEthereumChain',
                     params: [SEPOLIA_CONFIG],
                 });
@@ -202,25 +235,85 @@ async function connectWallet() {
         showLoading('连接钱包中...', '请在 MetaMask 中确认');
         addLog('正在连接 MetaMask...', 'info');
         
-        if (!window.ethereum) {
+        // 检测多个钱包扩展
+        const ethereumProviders = [];
+        if (window.ethereum) {
+            ethereumProviders.push(window.ethereum);
+        }
+        // 检测多个钱包（某些浏览器会注入多个 provider）
+        if (window.ethereum?.providers && Array.isArray(window.ethereum.providers)) {
+            ethereumProviders.push(...window.ethereum.providers);
+        }
+        
+        if (ethereumProviders.length === 0) {
             hideLoading();
             addLog('❌ 未检测到 MetaMask', 'error');
-            alert('请安装 MetaMask 钱包！');
+            alert('请安装 MetaMask 钱包！\n\n安装地址: https://metamask.io/');
             return;
         }
-
-        // 请求连接钱包
-        const accounts = await window.ethereum.request({ 
-            method: 'eth_requestAccounts' 
-        });
+        
+        // 如果有多个钱包，优先选择 MetaMask
+        let ethereum = window.ethereum;
+        if (ethereumProviders.length > 1) {
+            addLog(`⚠️ 检测到 ${ethereumProviders.length} 个钱包扩展`, 'info');
+            // 尝试找到 MetaMask
+            const metamask = ethereumProviders.find(
+                provider => provider.isMetaMask && !provider.isBraveWallet
+            );
+            if (metamask) {
+                ethereum = metamask;
+                addLog('✅ 已选择 MetaMask 钱包', 'success');
+            } else {
+                // 使用第一个
+                ethereum = ethereumProviders[0];
+                addLog('⚠️ 使用第一个可用钱包', 'info');
+            }
+        }
+        
+        // 检查是否已连接
+        let accounts = [];
+        try {
+            accounts = await ethereum.request({ 
+                method: 'eth_accounts' 
+            });
+        } catch (err) {
+            console.warn('获取已连接账户失败:', err);
+        }
+        
+        // 如果没有已连接的账户，请求连接
+        if (accounts.length === 0) {
+            addLog('📝 请求连接钱包...', 'info');
+            try {
+                accounts = await ethereum.request({ 
+                    method: 'eth_requestAccounts' 
+                });
+            } catch (err) {
+                // 用户拒绝连接
+                if (err.code === 4001) {
+                    hideLoading();
+                    addLog('❌ 用户拒绝了连接请求', 'error');
+                    alert('您已取消连接钱包');
+                    return;
+                }
+                // 其他错误
+                throw err;
+            }
+        }
+        
+        if (!accounts || accounts.length === 0) {
+            throw new Error('未获取到账户地址');
+        }
         
         // 创建 provider 和 signer (使用 UMD 版本的 ethers)
-        provider = new ethers.BrowserProvider(window.ethereum);
+        addLog('🔧 创建 Provider...', 'info');
+        provider = new ethers.BrowserProvider(ethereum);
         signer = await provider.getSigner();
         
         // 获取地址并转换为校验和格式（EIP-55）
         const rawAddress = accounts[0];
         userAddress = ethers.getAddress(rawAddress); // 转换为校验和格式
+        
+        addLog(`✅ 钱包地址: ${userAddress}`, 'success');
         
         // 检查网络
         const network = await provider.getNetwork();
@@ -230,7 +323,7 @@ async function connectWallet() {
             addLog(`⚠️ 当前网络不是 Sepolia，正在切换...`, 'info');
             showLoading('切换网络...', '请在 MetaMask 中确认切换到 Sepolia 网络');
             
-            const switched = await switchToSepolia();
+            const switched = await switchToSepolia(ethereum);
             if (!switched) {
                 hideLoading();
                 alert('请手动切换到 Sepolia 测试网络！');
@@ -238,7 +331,7 @@ async function connectWallet() {
             }
             
             // 重新获取 provider 和 signer
-            provider = new ethers.BrowserProvider(window.ethereum);
+            provider = new ethers.BrowserProvider(ethereum);
             signer = await provider.getSigner();
             addLog('✅ 已切换到 Sepolia 网络', 'success');
         }
@@ -279,9 +372,23 @@ async function connectWallet() {
         
     } catch (error) {
         hideLoading();
-        addLog(`❌ 连接失败: ${error.message}`, 'error');
-        alert(`连接失败: ${error.message}`);
-        console.error(error);
+        const errorMessage = error.message || '未知错误';
+        addLog(`❌ 连接失败: ${errorMessage}`, 'error');
+        
+        // 更友好的错误提示
+        let userMessage = '连接失败';
+        if (error.code === 4001) {
+            userMessage = '您已取消连接钱包';
+        } else if (error.code === -32002) {
+            userMessage = '连接请求已在进行中，请检查 MetaMask 弹窗';
+        } else if (error.message?.includes('Unexpected error') || error.message?.includes('Oe')) {
+            userMessage = 'MetaMask 连接出错，请尝试：\n1. 刷新页面\n2. 重启 MetaMask 扩展\n3. 检查是否有其他钱包扩展冲突\n4. 更新 MetaMask 到最新版本';
+        } else {
+            userMessage = `连接失败: ${errorMessage}`;
+        }
+        
+        alert(userMessage);
+        console.error('连接钱包详细错误:', error);
     }
 }
 
@@ -557,6 +664,29 @@ function closeResultModal() {
     }
 }
 
+// 页面加载时检测钱包
+function detectWalletOnLoad() {
+    if (!window.ethereum) {
+        addLog('⚠️ 未检测到钱包扩展', 'warning');
+        return;
+    }
+    
+    // 检测多个钱包
+    const providers = [];
+    if (window.ethereum) {
+        providers.push(window.ethereum);
+    }
+    if (window.ethereum?.providers && Array.isArray(window.ethereum.providers)) {
+        providers.push(...window.ethereum.providers);
+    }
+    
+    if (providers.length > 1) {
+        addLog(`⚠️ 检测到 ${providers.length} 个钱包扩展，建议只保留 MetaMask`, 'warning');
+    } else {
+        addLog('✅ 已检测到钱包扩展', 'success');
+    }
+}
+
 // 将函数暴露到全局作用域，供 HTML onclick 调用
 // 确保函数在定义后立即暴露
 if (typeof window !== 'undefined') {
@@ -564,5 +694,12 @@ if (typeof window !== 'undefined') {
     window.selectChoice = selectChoice;
     window.playGame = playGame;
     window.closeResultModal = closeResultModal;
+    
+    // 页面加载完成后检测钱包
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', detectWalletOnLoad);
+    } else {
+        detectWalletOnLoad();
+    }
 }
 
